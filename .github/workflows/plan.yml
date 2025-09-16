@@ -35,15 +35,33 @@ jobs:
         with:
           version: "0.14.0"
 
-      - name: Install asdf
-        uses: asdf-vm/actions/setup@v3
+      # ----- asdf >= 0.16 (Go) -----
+      # This action installs the modern asdf binary so you don't see the legacy Bash warning.
+      - name: Install asdf (>= 0.16)
+        uses: ynab/asdf-action@v2
+        with:
+          version: "0.16.5"
 
-      - name: Install Terraform and Terragrunt with asdf
+      # Terraform plugin (official community plugin for HashiCorp CLIs)
+      - name: Add asdf plugin: terraform
+        run: asdf plugin add terraform https://github.com/asdf-community/asdf-hashicorp.git
+
+      # Terragrunt plugin (maintained plugin; per Gruntwork docs)
+      - name: Add asdf plugin: terragrunt
+        run: asdf plugin add terragrunt https://github.com/ohmer/asdf-terragrunt
+
+      # Pin exact tool versions for deterministic CI. Adjust as needed.
+      - name: Install Terraform & Terragrunt
+        env:
+          # Bump these when you upgrade
+          TF_VERSION: "1.6.6"
+          TG_VERSION: "0.87.2"
         run: |
-          asdf plugin add terraform
-          asdf plugin add terragrunt
-          asdf install terraform
-          asdf install terragrunt
+          echo "terraform ${TF_VERSION}"   >> .tool-versions
+          echo "terragrunt ${TG_VERSION}" >> .tool-versions
+          asdf install
+          terraform version
+          terragrunt --version
 
       ### Linting
       - name: Check Terramate formatting
