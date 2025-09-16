@@ -3,7 +3,7 @@ terramate {
 
     run {
       env {
-        TG_BUCKET_PREFIX = "poc-demo-" 
+        TG_BUCKET_PREFIX = "poc-demo-"
       }
     }
 
