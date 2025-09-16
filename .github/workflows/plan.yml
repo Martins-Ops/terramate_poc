@@ -1,0 +1,96 @@
+name: Terragrunt Preview
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  preview:
+    name: Plan Terragrunt changes in changed Terramate stacks
+    runs-on: ubuntu-latest
+
+    # expose your secrets as envs here (rename to match your repo’s secrets)
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}            # <- from your secrets
+  
+
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: read
+
+    steps:
+      ### Check out the code
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      ### Install tooling
+      - name: Install Terramate
+        uses: terramate-io/terramate-action@v3
+        with:
+          version: "0.14.0"
+
+      - name: Install asdf
+        uses: asdf-vm/actions/setup@v3
+
+      - name: Install Terraform and Terragrunt with asdf
+        run: |
+          asdf plugin add terraform
+          asdf plugin add terragrunt
+          asdf install terraform
+          asdf install terragrunt
+
+      ### Linting
+      - name: Check Terramate formatting
+        run: terramate fmt --check
+
+      ### Check for changed stacks (proper output wiring)
+      - name: List changed stacks
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Count stacks; if none, downstream steps are skipped.
+          COUNT="$(terramate list --changed | wc -l | tr -d '[:space:]')"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Found $COUNT changed stack(s)."
+
+      ### Configure cloud credentials (via GitHub Secrets)
+      - name: Configure AWS credentials (static keys from secrets)
+        if: ${{ steps.changes.outputs.count != '0' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Verify AWS credentials
+        if: ${{ steps.changes.outputs.count != '0' }}
+        run: aws sts get-caller-identity
+
+      ### Run the Terragrunt preview via Terramate in each changed stack
+      - name: Initialize Terragrunt in changed stacks
+        if: ${{ steps.changes.outputs.count != '0' }}
+        run: terramate run --parallel 1 --changed -- terragrunt init -lock-timeout=5m
+
+      - name: Plan Terragrunt changes in changed stacks
+        if: ${{ steps.changes.outputs.count != '0' }}
+        env:
+          TF_VAR_master_password: ${{ secrets.MYSQL_PROD_MASTER_PASSWORD }}
+        run: |
+          terramate run \
+            --parallel 5 \
+            --changed \
+            --sync-preview \
+            --terraform-plan-file=out.tfplan \
+            --continue-on-error \
+            --terragrunt \
+            -- \
+            terragrunt plan -out out.tfplan \
+              -detailed-exitcode \
+              -lock=false
