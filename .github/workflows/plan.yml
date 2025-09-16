@@ -87,7 +87,8 @@ jobs:
       ### Run the Terragrunt preview via Terramate in each changed stack
       - name: Initialize Terragrunt in changed stacks
         if: ${{ steps.changes.outputs.count != '0' }}
-        run: terramate run --parallel 1 --changed -- terragrunt --non-interactive init -lock-timeout=5m
+        run: terramate run --parallel 1 --changed -- \
+               terragrunt init -lock-timeout=5m -no-color --disable-bucket-update
 
       - name: Plan Terragrunt changes in changed stacks
         if: ${{ steps.changes.outputs.count != '0' }}
