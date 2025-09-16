@@ -10,7 +10,6 @@ jobs:
     name: Plan Terragrunt changes in changed Terramate stacks
     runs-on: ubuntu-latest
 
-    # expose your secrets as envs here (rename to match your repo’s secrets)
     env:
       GITHUB_TOKEN: ${{ github.token }}
       AWS_REGION: ${{ secrets.AWS_REGION }}            # <- from your secrets
@@ -35,15 +34,28 @@ jobs:
         with:
           version: "0.14.0"
 
-      - name: Install asdf
-        uses: asdf-vm/actions/setup@v3
+      # Use the official asdf action that supports >= v0.16 (Go rewrite)
+      - name: Install asdf & prepare tool installs
+        uses: asdf-vm/actions/install@v4
 
       - name: Install Terraform and Terragrunt with asdf
+        shell: bash
         run: |
-          asdf plugin add terraform
-          asdf plugin add terragrunt
-          asdf install terraform
-          asdf install terragrunt
+          set -euo pipefail
+          # Add plugins from their repositories (so `asdf plugin add` works reliably)
+          asdf plugin add terraform  https://github.com/asdf-community/asdf-hashicorp.git || true
+          asdf plugin add terragrunt https://github.com/ohmer/asdf-terragrunt          || true
+
+          # Pick concrete versions (avoid "No versions specified" error)
+          TFV="$(asdf latest terraform)"
+          TGV="$(asdf latest terragrunt)"
+
+          echo "terraform ${TFV}"   >> .tool-versions
+          echo "terragrunt ${TGV}" >> .tool-versions
+
+          asdf install
+          terraform version
+          terragrunt --version
 
       ### Linting
       - name: Check Terramate formatting
@@ -55,7 +67,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Count stacks; if none, downstream steps are skipped.
           COUNT="$(terramate list --changed | wc -l | tr -d '[:space:]')"
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
           echo "Found $COUNT changed stack(s)."
